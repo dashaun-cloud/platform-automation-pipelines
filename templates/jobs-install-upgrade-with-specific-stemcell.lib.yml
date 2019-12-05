@@ -225,12 +225,10 @@ jobs:
 
   #! 6. delete-installation
 - name: delete-installation
-  serial: true
   plan:
     - in_parallel:
         - get: platform-automation-image
           params: {unpack: true}
-          passed: [apply-product-changes]
         - get: platform-automation-tasks
           params: {unpack: true}
         - get: configuration
