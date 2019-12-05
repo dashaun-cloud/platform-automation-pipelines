@@ -20,6 +20,7 @@ groups:
   #! end of for products():
   - apply-product-changes
   - export-installation
+  - delete-installation
 
 
 #@ for product in products():
