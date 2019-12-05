@@ -1,0 +1,7 @@
+#@data/values
+
+---
+
+products:
+- pas|elastic-runtime|cf
+- redis-enterprise|redis-enterprise-pack|redis-enterprise
