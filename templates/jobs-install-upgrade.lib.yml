@@ -180,5 +180,25 @@ jobs:
     params:
       file: installation/installation-*.zip
 
-#@ end
+  #! 6. delete-installation
+- name: delete-installation
+  serial: true
+  plan:
+    - in_parallel:
+        - get: platform-automation-image
+          params: {unpack: true}
+          passed: [apply-product-changes]
+        - get: platform-automation-tasks
+          params: {unpack: true}
+        - get: configuration
+    - #@ credhub_interpolate()
+    - task: delete-installation
+      image: platform-automation-image
+      file: platform-automation-tasks/tasks/delete-installation.yml
+      input_mapping:
+        env: interpolated-files
+      params:
+        ENV_FILE: ((foundation))/env/env.yml
+
+#@ end`
 #! end of def jobs():
