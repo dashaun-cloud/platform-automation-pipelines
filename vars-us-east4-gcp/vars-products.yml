@@ -4,4 +4,5 @@
 
 products:
 - pas|elastic-runtime|cf
-- redis-enterprise|redis-enterprise-pack|redis-enterprise
+- wavefront-nozzle|wavefront-nozzle
+- p-redis|p-redis

@@ -1,0 +1,11 @@
+#@data/values
+
+---
+
+products:
+
+  #! PKS
+- pks|pivotal-container-service
+
+#! Harbor
+#!- harbor|harbor-container-registry
