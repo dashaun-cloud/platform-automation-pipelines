@@ -270,7 +270,6 @@ jobs:
         - get: product-config-opsman
         - get: platform-automation-image
           params: {unpack: true}
-          passed: [apply-director-changes]
         - get: platform-automation-tasks
           params: {unpack: true}
         - get: configuration

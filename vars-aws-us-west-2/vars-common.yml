@@ -1,0 +1,35 @@
+---
+
+foundation: aws-us-west-2                                   # current foundation code
+
+s3:
+  buckets:
+    platform_automation: platform-automation-dashaun-cloud    # map bucket for platform-automation artifacts (e.g. image)
+    foundation: platform-automation-dashaun-cloud          # map bucket for current foundation for hosting exported installation-*.zip files
+  access_key_id: ((aws_access_key))
+  secret_access_key: ((aws_secret_key))
+  endpoint: ""
+  region_name: us-east-2
+
+credhub:
+  server: ((credhub_url))                      # CredHub endpoint
+  ca_cert: ((credhub_ca_cert))                 # CA Cert from CredHub
+  client: ((credhub_username))                 # UAA Client for CredHub access
+  secret: ((credhub_password))                 # UAA secret for CredHub access
+  interpolate_folders: "aws-us-west-2/config aws-us-west-2/env aws-us-west-2/vars"  # The folders from configuration repo (see below git.configuration) to be interpolated
+
+git:
+  configuration:                                      # The configuration repo
+    uri: "git@github.com:dashaun-cloud/platform-automation-configuration.git"
+    products_file: products.yml                       # The products yaml file that used to track for version changes
+  user:                                               # The user for access to configuration repo
+    email: robot@company.com                          # a dummy email will work if we're using private_key for authentication
+    username: mrrobot                   # a dummy username will work if we're using private_key for authentication
+    password: #((git_user.password))                  # optional if we're using private_key for authentication
+  private_key: ((git_ssh_key))        # The private for access to configuration repo
+
+schedule:
+  patch:                                              # Patch scheduler, the whole chunk will be used as ((schedule.patch))
+    start: 12:00 AM                                   # by following Time Resource https://github.com/concourse/time-resource
+    stop: 1:00 AM
+    location: America/Chicago

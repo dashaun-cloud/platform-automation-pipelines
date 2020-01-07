@@ -1,0 +1,69 @@
+---
+
+resource_types:
+- name: terraform
+  type: docker-image
+  source:
+    repository: ljfranklin/terraform-resource
+    tag: latest
+
+resources:
+- name: paving
+  type: git
+  source:
+    branch: master
+    uri: git@github.com:pivotal/paving.git
+    private_key: ((git_ssh_key))
+
+- name: terraform-aws
+  type: terraform
+  source:
+    env_name: ((env_name))
+    backend_type: s3
+    backend_config:
+      bucket: ((aws_terraform_bucket))
+      key: ((env_name))/terraform.tfstate
+      region: ((aws_terraform_bucket_region))
+      access_key: ((aws_access_key))
+      secret_key: ((aws_secret_key))
+    delete_on_failure: true
+    vars:
+      environment_name: ((env_name))
+      region: ((region))
+      dns_suffix: ((dns_suffix))
+      hosted_zone: ((hosted_zone))
+      availability_zones: ((availability_zones))
+      access_key: ((aws_access_key))
+      secret_key: ((aws_secret_key))
+
+- name: paving-aws-apply
+  plan:
+    - get: paving
+      trigger: false
+    - put: terraform-aws
+      params:
+        env_name: ((env_name))
+        terraform_source: paving/aws
+    - task: show-outputs
+      config:
+        platform: linux
+        inputs:
+          - name: terraform-aws
+        run:
+          path: /bin/sh
+          args:
+            - -c
+            - |
+              echo "name: $(cat terraform-aws/name)"
+              echo "metadata: $(cat terraform-aws/metadata)"
+- name: paving-aws-destroy
+  plan:
+    - get: paving
+      trigger: false
+    - put: terraform-aws
+      get_params:
+        action: destroy
+      params:
+        action: destroy
+        env_name: ((env_name))
+        terraform_source: paving/aws
