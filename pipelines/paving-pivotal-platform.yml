@@ -15,17 +15,17 @@ resources:
     uri: git@github.com:pivotal/paving.git
     private_key: ((git_ssh_key))
 
-- name: terraform-aws
+- name: terraform
   type: terraform
   source:
     env_name: ((env_name))
-    backend_type: s3
+    backend_type: remote
     backend_config:
-      bucket: ((aws_terraform_bucket))
-      key: ((env_name))/terraform.tfstate
-      region: ((aws_terraform_bucket_region))
-      access_key: ((aws_access_key))
-      secret_key: ((aws_secret_key))
+      hostname: app.terraform.io
+      organization:  ((app_terraform_io_org))
+      token: ((app_terraform_io_token))
+      workspaces:
+        name: ((env_name))
     delete_on_failure: true
     vars:
       environment_name: ((env_name))
@@ -35,35 +35,37 @@ resources:
       availability_zones: ((availability_zones))
       access_key: ((aws_access_key))
       secret_key: ((aws_secret_key))
+      terraform_source_iaas: ((iaas))
 
-- name: paving-aws-apply
+jobs:      
+- name: paving-apply
   plan:
     - get: paving
       trigger: false
-    - put: terraform-aws
+    - put: terraform
       params:
         env_name: ((env_name))
-        terraform_source: paving/aws
+        terraform_source: paving/((iaas))
     - task: show-outputs
       config:
         platform: linux
         inputs:
-          - name: terraform-aws
+          - name: terraform
         run:
           path: /bin/sh
           args:
             - -c
             - |
-              echo "name: $(cat terraform-aws/name)"
-              echo "metadata: $(cat terraform-aws/metadata)"
-- name: paving-aws-destroy
+              echo "name: $(cat terraform/name)"
+              echo "metadata: $(cat terraform/metadata)"
+- name: paving-destroy
   plan:
     - get: paving
       trigger: false
-    - put: terraform-aws
+    - put: terraform
       get_params:
         action: destroy
       params:
         action: destroy
         env_name: ((env_name))
-        terraform_source: paving/aws
+        terraform_source: paving/((iaas))
