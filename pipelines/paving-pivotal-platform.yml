@@ -6,66 +6,423 @@ resource_types:
   source:
     repository: ljfranklin/terraform-resource
     tag: latest
+- name: semver-config
+  type: docker-image
+  source:
+    repository: itstarting/semver-config-concourse-resource
+    tag: 1.1.0
+
+# reusable stuff
+credhub-interpolate: &credhub-interpolate
+  image: platform-automation-image
+  file: platform-automation-tasks/tasks/credhub-interpolate.yml
+  input_mapping:
+    files: configuration
+  params:
+    CREDHUB_SERVER: ((credhub.server))
+    CREDHUB_CA_CERT: ((credhub.ca_cert))
+    CREDHUB_CLIENT: ((credhub.client))
+    CREDHUB_SECRET: ((credhub.secret))
+    PREFIX: /concourse/((foundation))
+    INTERPOLATION_PATHS: ((credhub.interpolate_folders))
 
 resources:
+- name: configuration
+  type: git
+  source:
+    private_key: ((git.private_key))
+    username: ((git.user.username))
+    password: ((git.user.password))
+    uri: ((git.configuration.uri))
+    branch: master
+- name: installation
+  type: s3
+  source:
+    endpoint: ((s3.endpoint))
+    region_name: ((s3.region_name))
+    access_key_id: ((s3.access_key_id))
+    secret_access_key: ((s3.secret_access_key))
+    bucket: ((s3.buckets.foundation))
+    regexp: installation-after-(.*).zip
 - name: paving
   type: git
   source:
     branch: master
     uri: git@github.com:pivotal/paving.git
     private_key: ((git_ssh_key))
-
+- name: platform-automation-image
+  type: s3
+  source:
+    endpoint: ((s3.endpoint))
+    region_name: ((s3.region_name))
+    access_key_id: ((s3.access_key_id))
+    secret_access_key: ((s3.secret_access_key))
+    bucket: ((s3.buckets.platform_automation))
+    regexp: .*image-(.*).tgz
+- name: platform-automation-tasks
+  type: s3
+  source:
+    endpoint: ((s3.endpoint))
+    region_name: ((s3.region_name))
+    access_key_id: ((s3.access_key_id))
+    secret_access_key: ((s3.secret_access_key))
+    bucket: ((s3.buckets.platform_automation))
+    regexp: .*tasks-(.*).zip
+- name: product-config-opsman
+  type: semver-config
+  source:
+    driver: git
+    uri: ((git.configuration.uri))
+    branch: master
+    private_key: ((git.private_key))
+    username: ((git.user.username))
+    password: ((git.user.password))
+    config_file: ((foundation))/products.yml
+    config_path: products.opsman
+    version_path: products.opsman.product-version
+    version_pattern: "m.n.p"
 - name: terraform
   type: terraform
   source:
-    env_name: ((env_name))
-    backend_type: remote
+    env_name: ((foundation))
+    backend_type: gcs
     backend_config:
-      hostname: app.terraform.io
-      organization:  ((app_terraform_io_org))
-      token: ((app_terraform_io_token))
-      workspaces:
-        name: ((env_name))
+      bucket: terraform-state-dashaun-cloud
+      prefix: ((foundation))
+      credentials: ((gcp_credentials_json))
     delete_on_failure: true
     vars:
-      environment_name: ((env_name))
+      environment_name: ((foundation))
       region: ((region))
       dns_suffix: ((dns_suffix))
       hosted_zone: ((hosted_zone))
       availability_zones: ((availability_zones))
-      access_key: ((aws_access_key))
-      secret_key: ((aws_secret_key))
-      terraform_source_iaas: ((iaas))
+      access_key: ((access_key))
+      secret_key: ((secret_key))
+      project: ((project))
+      service_account_key: ((gcp_credentials_json))
+      ssl_certificate: ((acme_cert.certificate))
+      ssl_private_key: ((acme_cert.private_key))
 
-jobs:      
+jobs:
 - name: paving-apply
   plan:
     - get: paving
       trigger: false
     - put: terraform
       params:
-        env_name: ((env_name))
+        env_name: ((foundation))
         terraform_source: paving/((iaas))
-    - task: show-outputs
-      config:
-        platform: linux
-        inputs:
-          - name: terraform
-        run:
-          path: /bin/sh
-          args:
-            - -c
-            - |
-              echo "name: $(cat terraform/name)"
-              echo "metadata: $(cat terraform/metadata)"
-- name: paving-destroy
+- name: store-tfstate-in-credhub
   plan:
-    - get: paving
-      trigger: false
-    - put: terraform
-      get_params:
-        action: destroy
+  - get: terraform
+    trigger: true
+    passed: [paving-apply]
+  - task: store-tfstate
+    config:
+      platform: linux
+      image_resource:
+        type: registry-image
+        source:
+          repository: governmentpaas/bosh-cli-v2
+          tag: latest
+      inputs:
+        - name: terraform
       params:
-        action: destroy
-        env_name: ((env_name))
-        terraform_source: paving/((iaas))
+        CH_USER: ((credhub_username))
+        CH_PASS: ((credhub_password))
+        CH_URL: ((credhub_url))
+        CH_CA: ((credhub_ca_cert))
+      run:
+        path: bash
+        args:
+          - -c
+          - |
+            credhub login --client-name="$CH_USER" --client-secret="$CH_PASS" -s "$CH_URL" --ca-cert="$CH_CA"
+            credhub delete -n /concourse/((foundation))/tfstate
+            credhub set -n /concourse/((foundation))/tfstate -t value -v "$(cat terraform/metadata)"
+  - task: expand-tfstate-keys
+    config:
+      platform: linux
+      image_resource:
+        type: registry-image
+        source:
+          repository: governmentpaas/bosh-cli-v2
+          tag: latest
+      inputs:
+        - name: terraform
+      params:
+        CH_USER: ((credhub_username))
+        CH_PASS: ((credhub_password))
+        CH_URL: ((credhub_url))
+        CH_CA: ((credhub_ca_cert))
+      run:
+        path: bash
+        args:
+          - -c
+          - |
+            credhub login --client-name="$CH_USER" --client-secret="$CH_PASS" -s "$CH_URL" --ca-cert="$CH_CA"
+            apt-get update -qq -y
+            apt-get install jq -qq -y
+            credhub get -n /concourse/((foundation))/tfstate -j | jq -r .value | jq -r .stable_config >> stable_config.json
+            cat "stable_config.json" | jq -r '. | keys[]' |
+            while IFS= read -r value; do
+                credhub delete -n "/concourse/((foundation))/tf_$value"
+                credhub set -n "/concourse/((foundation))/tf_$value" -t value -v "$(cat stable_config.json | jq -r .$value)"
+            done
+  - task: expand-tfstate-keys-with-arrays
+    config:
+      platform: linux
+      image_resource:
+        type: registry-image
+        source:
+          repository: governmentpaas/bosh-cli-v2
+          tag: latest
+      inputs:
+        - name: terraform
+      params:
+        CH_USER: ((credhub_username))
+        CH_PASS: ((credhub_password))
+        CH_URL: ((credhub_url))
+        CH_CA: ((credhub_ca_cert))
+      run:
+        path: bash
+        args:
+          - -c
+          - |
+            credhub login --client-name="$CH_USER" --client-secret="$CH_PASS" -s "$CH_URL" --ca-cert="$CH_CA"
+            apt-get update -qq -y
+            apt-get install jq -qq -y
+            credhub get -n /concourse/((foundation))/tfstate -j | jq -r .value | jq -r .stable_config >> stable_config.json
+            cat "stable_config.json" | jq -r '. | keys[]' |
+            while IFS= read -r value; do
+                KEY=$value
+                CH_PATH="/concourse/((foundation))/tf_$KEY"
+                VAL="$(credhub get -n $CH_PATH -j | jq -r .value)"
+                COUNTER=0
+                for row in $(echo "$VAL" | jq -r .[] 2> /dev/null); do
+                    credhub delete -n "$CH_PATH"_"$COUNTER"
+                    credhub set -n "$CH_PATH"_"$COUNTER" -t value -v "$row"
+                    let COUNTER=COUNTER+1
+                done
+            done
+
+- name: create-opsman-and-configure-auth
+  serial: true
+  plan:
+    - in_parallel:
+        - get: terraform
+          trigger: true
+          passed: [paving-apply]
+        - get: product-config-opsman
+          trigger: true
+        - get: platform-automation-image
+          params: {unpack: true}
+        - get: platform-automation-tasks
+          params: {unpack: true}
+        - get: configuration
+    - task: credhub-interpolate
+      <<: *credhub-interpolate
+    - task: download-product
+      image: platform-automation-image
+      file: platform-automation-tasks/tasks/download-product.yml
+      input_mapping:
+        config: product-config-opsman
+        vars: interpolated-files
+      params:
+        CONFIG_FILE: semver-config.yaml
+        VARS_FILES: vars/((foundation))/config/global.yml
+    - task: create-vm
+      image: platform-automation-image
+      file: platform-automation-tasks/tasks/create-vm.yml
+      input_mapping:
+        image: downloaded-product
+        state: configuration
+        config: configuration
+        vars: interpolated-files
+      params:
+        OPSMAN_CONFIG_FILE: ((foundation))/products/ops-manager.yml
+        VARS_FILES: vars/((foundation))/vars/ops-manager-vars.yml
+        STATE_FILE: ((foundation))/state/state.yml
+      on_success:
+        do:
+          - task: make-commit
+            image: platform-automation-image
+            file: platform-automation-tasks/tasks/make-git-commit.yml
+            input_mapping:
+              repository: configuration
+              file-source: generated-state
+            output_mapping:
+              repository-commit: configuration-commit
+            params:
+              FILE_SOURCE_PATH: state.yml
+              FILE_DESTINATION_PATH: ((foundation))/state/state.yml
+              GIT_AUTHOR_EMAIL: ((git.user.email))
+              GIT_AUTHOR_NAME: ((git.user.username))
+              COMMIT_MESSAGE: "Add or update state file: state.yml"
+          - put: configuration
+            params:
+              repository: configuration-commit
+              merge: true
+    - task: configure-authentication
+      image: platform-automation-image
+      file: platform-automation-tasks/tasks/configure-authentication.yml
+      attempts: 10
+      input_mapping:
+        env: interpolated-files
+        config: interpolated-files
+      params:
+        ENV_FILE: ((foundation))/env/env.yml
+        AUTH_CONFIG_FILE: ((foundation))/config/auth.yml
+
+  # 2. generate-director-config
+- name: generate-director-config
+  serial: true
+  plan:
+    - in_parallel:
+        - get: product-config-opsman
+          trigger: true
+          passed: [create-opsman-and-configure-auth]
+        - get: platform-automation-image
+          params: {unpack: true}
+        - get: platform-automation-tasks
+          params: {unpack: true}
+        - get: configuration
+    - task: credhub-interpolate
+      <<: *credhub-interpolate
+    - task: staged-director-config
+      image: platform-automation-image
+      file: platform-automation-tasks/tasks/staged-director-config.yml
+      input_mapping:
+        env: interpolated-files
+      params:
+        ENV_FILE: ((foundation))/env/env.yml
+      on_success: &make-config-commit
+        do:
+          - task: make-commit
+            image: platform-automation-image
+            file: platform-automation-tasks/tasks/make-git-commit.yml
+            input_mapping:
+              repository: configuration
+              file-source: generated-config
+            output_mapping:
+              repository-commit: configuration-commit
+            params:
+              FILE_SOURCE_PATH: director.yml
+              FILE_DESTINATION_PATH: ((foundation))/generated-config/director.yml
+              GIT_AUTHOR_EMAIL: ((git.user.email))
+              GIT_AUTHOR_NAME: ((git.user.username))
+              COMMIT_MESSAGE: "Add or update product config: director.yml"
+          - put: configuration
+            params:
+              repository: configuration-commit
+              merge: true
+
+  # 3. configure-director
+- name: configure-director
+  serial: true
+  plan:
+    - in_parallel:
+        - get: product-config-opsman
+          passed: [create-opsman-and-configure-auth]
+        - get: platform-automation-image
+          params: {unpack: true}
+        - get: platform-automation-tasks
+          params: {unpack: true}
+        - get: configuration
+    - task: credhub-interpolate
+      <<: *credhub-interpolate
+    - task: configure-director
+      image: platform-automation-image
+      file: platform-automation-tasks/tasks/configure-director.yml
+      input_mapping:
+        config: configuration
+        env: interpolated-files
+        vars: interpolated-files
+      params:
+        ENV_FILE: ((foundation))/env/env.yml
+        DIRECTOR_CONFIG_FILE: ((foundation))/products/director.yml
+        VARS_FILES: vars/((foundation))/vars/director-vars.yml
+
+  # 4. apply-director-changes
+- name: apply-director-changes
+  serial: true
+  plan:
+    - in_parallel:
+        - get: product-config-opsman
+          passed: [configure-director]
+        - get: platform-automation-image
+          params: {unpack: true}
+        - get: platform-automation-tasks
+          params: {unpack: true}
+        - get: configuration
+    - task: credhub-interpolate
+      <<: *credhub-interpolate
+    - task: apply-director-changes
+      image: platform-automation-image
+      file: platform-automation-tasks/tasks/apply-director-changes.yml
+      input_mapping:
+        env: interpolated-files
+      params:
+        ENV_FILE: ((foundation))/env/env.yml
+
+  # 5. export-installation
+- name: export-installation
+  serial: true
+  plan:
+    - in_parallel:
+        - get: product-config-opsman
+          passed: [apply-director-changes]
+          trigger: true
+        - get: platform-automation-image
+          params: {unpack: true}
+        - get: platform-automation-tasks
+          params: {unpack: true}
+        - get: configuration
+    - task: credhub-interpolate
+      <<: *credhub-interpolate
+    - task: export-installation
+      image: platform-automation-image
+      file: platform-automation-tasks/tasks/export-installation.yml
+      input_mapping:
+        env: interpolated-files
+      params:
+        ENV_FILE: ((foundation))/env/env.yml
+        INSTALLATION_FILE: installation-after-ops-manager.zip
+    - put: installation
+      params:
+        file: installation/installation-after-ops-manager.zip
+
+  #! 6. delete-opsman
+- name: delete-opsman
+  serial: true
+  plan:
+    - in_parallel:
+        - get: product-config-opsman
+        - get: platform-automation-image
+          params: {unpack: true}
+        - get: platform-automation-tasks
+          params: {unpack: true}
+        - get: configuration
+    - task: credhub-interpolate
+      <<: *credhub-interpolate
+    - task: delete-opsman
+      image: platform-automation-image
+      file: platform-automation-tasks/tasks/delete-vm.yml
+      input_mapping:
+        vars: interpolated-files
+        config: configuration
+        state: configuration
+      params:
+        VARS_FILES: vars/((foundation))/vars/ops-manager-vars.yml
+        OPSMAN_CONFIG_FILE: ((foundation))/products/ops-manager.yml
+        STATE_FILE: ((foundation))/state/state.yml
+#    - get: paving
+#      trigger: false
+#    - put: terraform
+#      get_params:
+#        action: destroy
+#      params:
+#        action: destroy
+#        env_name: ((foundation))
+#        terraform_source: paving/((iaas))

@@ -1,6 +1,6 @@
 ---
 
-foundation: us-central1-gcp                                   # current foundation code
+foundation: gcp-us-central1                                   # current foundation code
 
 s3:
   gcs_json_key: ((gcp_credentials_json))                     # GCS: GCS' JSON key with right access permission
@@ -13,7 +13,7 @@ credhub:
   ca_cert: ((credhub_ca_cert))                 # CA Cert from CredHub
   client: ((credhub_username))                 # UAA Client for CredHub access
   secret: ((credhub_password))                 # UAA secret for CredHub access
-  interpolate_folders: "us-central1-gcp/config us-central1-gcp/env us-central1-gcp/vars"  # The folders from configuration repo (see below git.configuration) to be interpolated
+  interpolate_folders: "gcp-us-central1/config gcp-us-central1/env gcp-us-central1/vars"  # The folders from configuration repo (see below git.configuration) to be interpolated
 
 git:
   configuration:                                      # The configuration repo

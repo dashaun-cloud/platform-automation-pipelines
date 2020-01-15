@@ -69,6 +69,6 @@ if [[ ${#opt_o[@]} > 0 ]]; then
     done
 fi
 
-fly -t $opt_t set-pipeline -p $opt_n \
+fly -t "${opt_t}" set-pipeline -p "${opt_n}" \
     -c <( cat pipelines/${suggested_pipeline_name}.yml | $config_file ) \
-    -l vars-${opt_p}/vars-common.yml
+    -l vars-"${opt_p}"/vars-common.yml -l vars-"${opt_p}"/vars-terraform.yml

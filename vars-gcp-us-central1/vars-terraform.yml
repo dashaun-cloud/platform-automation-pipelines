@@ -1,0 +1,24 @@
+---
+# In order to keep pipelines consistent
+# Make values empty strings for the other IAAS
+# Do not put secrets in this file
+
+#Which IAAS [gcp|aws|azure]
+iaas: gcp
+
+#Azure
+
+#AWS
+
+dns_suffix: ""
+access_key: ""
+secret_key: ""
+
+
+#GCP
+region: "us-central1"
+project: "pa-dacarter"
+hosted_zone: "gcp-dashaun-cloud"
+availability_zones:
+  - us-central1-a
+  - us-central1-b
