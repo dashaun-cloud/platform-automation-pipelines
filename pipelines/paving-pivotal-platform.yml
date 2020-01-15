@@ -179,7 +179,7 @@ jobs:
           repository: governmentpaas/bosh-cli-v2
           tag: latest
       inputs:
-        - name: terraform
+      - name: terraform
       params:
         CH_USER: ((credhub_username))
         CH_PASS: ((credhub_password))
@@ -206,74 +206,75 @@ jobs:
                     let COUNTER=COUNTER+1
                 done
             done
-
 - name: create-opsman-and-configure-auth
   serial: true
   plan:
-    - in_parallel:
-        - get: terraform
-          trigger: true
-          passed: [paving-apply]
-        - get: product-config-opsman
-          trigger: true
-        - get: platform-automation-image
-          params: {unpack: true}
-        - get: platform-automation-tasks
-          params: {unpack: true}
-        - get: configuration
-    - task: credhub-interpolate
-      <<: *credhub-interpolate
-    - task: download-product
-      image: platform-automation-image
-      file: platform-automation-tasks/tasks/download-product.yml
-      input_mapping:
-        config: product-config-opsman
-        vars: interpolated-files
-      params:
-        CONFIG_FILE: semver-config.yaml
-        VARS_FILES: vars/((foundation))/config/global.yml
-    - task: create-vm
-      image: platform-automation-image
-      file: platform-automation-tasks/tasks/create-vm.yml
-      input_mapping:
-        image: downloaded-product
-        state: configuration
-        config: configuration
-        vars: interpolated-files
-      params:
-        OPSMAN_CONFIG_FILE: ((foundation))/products/ops-manager.yml
-        VARS_FILES: vars/((foundation))/vars/ops-manager-vars.yml
-        STATE_FILE: ((foundation))/state/state.yml
-      on_success:
-        do:
-          - task: make-commit
-            image: platform-automation-image
-            file: platform-automation-tasks/tasks/make-git-commit.yml
-            input_mapping:
-              repository: configuration
-              file-source: generated-state
-            output_mapping:
-              repository-commit: configuration-commit
-            params:
-              FILE_SOURCE_PATH: state.yml
-              FILE_DESTINATION_PATH: ((foundation))/state/state.yml
-              GIT_AUTHOR_EMAIL: ((git.user.email))
-              GIT_AUTHOR_NAME: ((git.user.username))
-              COMMIT_MESSAGE: "Add or update state file: state.yml"
-          - put: configuration
-            params:
-              repository: configuration-commit
-              merge: true
-    - task: configure-authentication
-      image: platform-automation-image
-      file: platform-automation-tasks/tasks/configure-authentication.yml
-      attempts: 10
-      input_mapping:
-        env: interpolated-files
-        config: interpolated-files
-      params:
-        ENV_FILE: ((foundation))/env/env.yml
-        AUTH_CONFIG_FILE: ((foundation))/config/auth.yml
+  - in_parallel:
+    - get: product-config-opsman
+      trigger: true
+    - get: platform-automation-image
+      params: {unpack: true}
+    - get: platform-automation-tasks
+      params: {unpack: true}
+    - get: configuration
+      trigger: true
+    - get: terraform
+      trigger: true
+      passed: [store-tfstate-in-credhub]
+  - task: credhub-interpolate
+    <<: *credhub-interpolate
+  - task: download-product
+    image: platform-automation-image
+    file: platform-automation-tasks/tasks/download-product.yml
+    input_mapping:
+      config: product-config-opsman
+      vars: interpolated-files
+    params:
+      CONFIG_FILE: semver-config.yaml
+      VARS_FILES: vars/((foundation))/config/global.yml
+  - task: create-vm
+    image: platform-automation-image
+    file: platform-automation-tasks/tasks/create-vm.yml
+    input_mapping:
+      image: downloaded-product
+      state: configuration
+      config: configuration
+      vars: interpolated-files
+    params:
+      OPSMAN_CONFIG_FILE: ((foundation))/products/ops-manager.yml
+      VARS_FILES: vars/((foundation))/vars/ops-manager-vars.yml
+      STATE_FILE: ((foundation))/state/state.yml
+    on_success:
+      do:
+      - task: make-commit
+        image: platform-automation-image
+        file: platform-automation-tasks/tasks/make-git-commit.yml
+        input_mapping:
+          repository: configuration
+          file-source: generated-state
+        output_mapping:
+          repository-commit: configuration-commit
+        params:
+          FILE_SOURCE_PATH: state.yml
+          FILE_DESTINATION_PATH: ((foundation))/state/state.yml
+          GIT_AUTHOR_EMAIL: ((git.user.email))
+          GIT_AUTHOR_NAME: ((git.user.username))
+          COMMIT_MESSAGE: "Add or update state file: state.yml"
+      - put: configuration
+        params:
+          repository: configuration-commit
+          merge: true
+  - task: configure-authentication
+    image: platform-automation-image
+    file: platform-automation-tasks/tasks/configure-authentication.yml
+    attempts: 10
+    input_mapping:
+      env: interpolated-files
+      config: interpolated-files
+    params:
+      ENV_FILE: ((foundation))/env/env.yml
+      AUTH_CONFIG_FILE: ((foundation))/config/auth.yml
+
 
   # 2. generate-director-config
 - name: generate-director-config
@@ -330,6 +331,8 @@ jobs:
         - get: platform-automation-tasks
           params: {unpack: true}
         - get: configuration
+          trigger: true
+          passed: [create-opsman-and-configure-auth]
     - task: credhub-interpolate
       <<: *credhub-interpolate
     - task: configure-director
@@ -350,6 +353,7 @@ jobs:
   plan:
     - in_parallel:
         - get: product-config-opsman
+          trigger: true
           passed: [configure-director]
         - get: platform-automation-image
           params: {unpack: true}
