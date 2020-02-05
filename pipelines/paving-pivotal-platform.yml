@@ -43,7 +43,7 @@ resources:
     access_key_id: ((s3.access_key_id))
     secret_access_key: ((s3.secret_access_key))
     bucket: ((s3.buckets.foundation))
-    regexp: installation-after-(.*).zip
+    regexp: ((foundation))-installation-after-(.*).zip
 - name: paving
   type: git
   source:
@@ -107,12 +107,23 @@ resources:
 jobs:
 - name: paving-apply
   plan:
-    - get: paving
-      trigger: false
-    - put: terraform
-      params:
-        env_name: ((foundation))
-        terraform_source: paving/((iaas))
+  - get: paving
+    trigger: false
+  - put: terraform
+    params:
+      env_name: ((foundation))
+      terraform_source: paving/((iaas))
+- name: paving-destroy
+  plan:
+  - get: paving
+    trigger: false
+  - put: terraform
+    get_params:
+      action: destroy
+    params:
+      action: destroy
+      env_name: ((foundation))
+      terraform_source: paving/((iaas))
 - name: store-tfstate-in-credhub
   plan:
   - get: terraform
@@ -324,15 +335,13 @@ jobs:
   serial: true
   plan:
     - in_parallel:
-        - get: product-config-opsman
-          passed: [create-opsman-and-configure-auth,generate-director-config]
-        - get: platform-automation-image
-          params: {unpack: true}
-        - get: platform-automation-tasks
-          params: {unpack: true}
-        - get: configuration
-          trigger: false
-          passed: [create-opsman-and-configure-auth]
+      - get: configuration
+      - get: product-config-opsman
+        passed: [create-opsman-and-configure-auth,generate-director-config]
+      - get: platform-automation-image
+        params: {unpack: true}
+      - get: platform-automation-tasks
+        params: {unpack: true}
     - task: credhub-interpolate
       <<: *credhub-interpolate
     - task: configure-director
@@ -392,10 +401,10 @@ jobs:
         env: interpolated-files
       params:
         ENV_FILE: ((foundation))/env/env.yml
-        INSTALLATION_FILE: installation-after-ops-manager.zip
+        INSTALLATION_FILE: ((foundation))-installation-after-ops-manager.zip
     - put: installation
       params:
-        file: installation/installation-after-ops-manager.zip
+        file: installation/((foundation))-installation-after-ops-manager.zip
 
   #! 6. delete-opsman
 - name: delete-opsman
