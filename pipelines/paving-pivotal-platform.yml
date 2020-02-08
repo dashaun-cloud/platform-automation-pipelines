@@ -952,6 +952,7 @@ jobs:
     - get: platform-automation-tasks
       params: {unpack: true}
     - get: configuration
+      trigger: true
       passed:
       - delete-installation
   - task: credhub-interpolate
