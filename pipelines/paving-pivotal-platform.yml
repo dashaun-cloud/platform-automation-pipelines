@@ -103,6 +103,58 @@ resources:
       service_account_key: ((gcp_credentials_json))
       ssl_certificate: ((acme_cert.certificate))
       ssl_private_key: ((acme_cert.private_key))
+- name: product-config-pas
+  source:
+    branch: master
+    config_file: ((foundation))/products.yml
+    config_path: products.pas
+    driver: git
+    private_key: ((git.private_key))
+    uri: ((git.configuration.uri))
+    username: ((git.user.username))
+    password: ((git.user.password))
+    version_path: products.pas.product-version
+    version_pattern: m.n.*
+  type: semver-config
+- name: product-config-pas-stemcell
+  source:
+    branch: master
+    config_file: ((foundation))/products.yml
+    config_path: products.pas-stemcell
+    driver: git
+    private_key: ((git.private_key))
+    uri: ((git.configuration.uri))
+    username: ((git.user.username))
+    password: ((git.user.password))
+    version_path: products.pas-stemcell.product-version
+    version_pattern: '-'
+  type: semver-config
+- name: product-config-pks
+  source:
+    branch: master
+    config_file: ((foundation))/products.yml
+    config_path: products.pks
+    driver: git
+    private_key: ((git.private_key))
+    uri: ((git.configuration.uri))
+    username: ((git.user.username))
+    password: ((git.user.password))
+    version_path: products.pks.product-version
+    version_pattern: m.n.*
+  type: semver-config
+- name: product-config-pks-stemcell
+  source:
+    branch: master
+    config_file: ((foundation))/products.yml
+    config_path: products.pks-stemcell
+    driver: git
+    private_key: ((git.private_key))
+    uri: ((git.configuration.uri))
+    username: ((git.user.username))
+    password: ((git.user.password))
+    version_path: products.pks-stemcell.product-version
+    version_pattern: '-'
+  type: semver-config
 
 jobs:
 - name: paving-apply
@@ -111,17 +163,6 @@ jobs:
     trigger: false
   - put: terraform
     params:
-      env_name: ((foundation))
-      terraform_source: paving/((iaas))
-- name: paving-destroy
-  plan:
-  - get: paving
-    trigger: false
-  - put: terraform
-    get_params:
-      action: destroy
-    params:
-      action: destroy
       env_name: ((foundation))
       terraform_source: paving/((iaas))
 - name: store-tfstate-in-credhub
@@ -337,6 +378,7 @@ jobs:
     - in_parallel:
       - get: configuration
       - get: product-config-opsman
+        trigger: true
         passed: [create-opsman-and-configure-auth,generate-director-config]
       - get: platform-automation-image
         params: {unpack: true}
@@ -383,70 +425,579 @@ jobs:
 - name: export-installation
   serial: true
   plan:
-    - in_parallel:
+  - in_parallel:
+      - get: product-config-opsman
+        passed: [apply-director-changes]
+        trigger: true
+      - get: platform-automation-image
+        params: {unpack: true}
+      - get: platform-automation-tasks
+        params: {unpack: true}
+      - get: configuration
+  - task: credhub-interpolate
+    <<: *credhub-interpolate
+  - task: export-installation
+    image: platform-automation-image
+    file: platform-automation-tasks/tasks/export-installation.yml
+    input_mapping:
+      env: interpolated-files
+    params:
+      ENV_FILE: ((foundation))/env/env.yml
+      INSTALLATION_FILE: ((foundation))-installation-after-ops-manager.zip
+  - put: installation
+    params:
+      file: installation/((foundation))-installation-after-ops-manager.zip
+
+#download-upload-stage-product-pas
+- name: download-upload-stage-product-pas
+  plan:
+  - in_parallel:
+      steps:
         - get: product-config-opsman
           passed: [apply-director-changes]
           trigger: true
+        - get: product-config-pas
+          trigger: true
+        - get: product-config-pas-stemcell
+          params:
+            filename: semver-config-stemcell
+            format: yaml
         - get: platform-automation-image
-          params: {unpack: true}
+          params:
+            unpack: true
         - get: platform-automation-tasks
-          params: {unpack: true}
+          params:
+            unpack: true
         - get: configuration
-    - task: credhub-interpolate
-      <<: *credhub-interpolate
-    - task: export-installation
-      image: platform-automation-image
-      file: platform-automation-tasks/tasks/export-installation.yml
-      input_mapping:
-        env: interpolated-files
-      params:
-        ENV_FILE: ((foundation))/env/env.yml
-        INSTALLATION_FILE: ((foundation))-installation-after-ops-manager.zip
-    - put: installation
-      params:
-        file: installation/((foundation))-installation-after-ops-manager.zip
-
-  #! 6. delete-opsman
-- name: delete-opsman
+  - file: platform-automation-tasks/tasks/credhub-interpolate.yml
+    image: platform-automation-image
+    input_mapping:
+      files: configuration
+    params:
+      CREDHUB_CA_CERT: ((credhub_ca_cert))
+      CREDHUB_CLIENT: ((credhub_username))
+      CREDHUB_SECRET: ((credhub_password))
+      CREDHUB_SERVER: ((credhub_url))
+      INTERPOLATION_PATHS: gcp-tinderbox/config gcp-tinderbox/env gcp-tinderbox/vars
+      PREFIX: /concourse/gcp-tinderbox
+    task: credhub-interpolate
+  - file: platform-automation-tasks/tasks/download-product.yml
+    image: platform-automation-image
+    input_mapping:
+      config: product-config-pas
+      vars: interpolated-files
+    params:
+      CONFIG_FILE: semver-config.yaml
+      VARS_FILES: vars/gcp-tinderbox/config/global.yml
+    task: download-product
+  - file: platform-automation-tasks/tasks/upload-product.yml
+    image: platform-automation-image
+    input_mapping:
+      env: interpolated-files
+      product: downloaded-product
+    params:
+      ENV_FILE: gcp-tinderbox/env/env.yml
+    task: upload-product
+  - file: platform-automation-tasks/tasks/stage-product.yml
+    image: platform-automation-image
+    input_mapping:
+      env: interpolated-files
+      product: downloaded-product
+    params:
+      ENV_FILE: gcp-tinderbox/env/env.yml
+    task: stage-product
+  - file: platform-automation-tasks/tasks/download-product.yml
+    image: platform-automation-image
+    input_mapping:
+      config: product-config-pas-stemcell
+      vars: interpolated-files
+    params:
+      CONFIG_FILE: semver-config-stemcell.yaml
+      VARS_FILES: vars/gcp-tinderbox/config/global.yml
+    task: download-stemcell
+  - file: platform-automation-tasks/tasks/upload-stemcell.yml
+    image: platform-automation-image
+    input_mapping:
+      env: interpolated-files
+      stemcell: downloaded-product
+    params:
+      ENV_FILE: gcp-tinderbox/env/env.yml
+      FLOATING_STEMCELL: false
+    task: upload-stemcell
+  - config:
+      container_limits: {}
+      inputs:
+        - name: product-config-pas-stemcell
+        - name: interpolated-files
+      outputs:
+        - name: assign-stemcell-config
+      platform: linux
+      run:
+        args:
+          - -exc
+          - |
+            stemcell_version="$( om interpolate \
+            --config product-config-pas-stemcell/semver-config-stemcell.yaml \
+            --vars-file interpolated-files/gcp-tinderbox/config/global.yml \
+            --path /product-version )"
+            echo "{\"product\":\"cf\",\"stemcell\":\"$stemcell_version\"}" > assign-stemcell-config/config.yml
+            cat assign-stemcell-config/config.yml
+        path: sh
+    image: platform-automation-image
+    task: prepare-assign-stemcell-config
+  - file: platform-automation-tasks/tasks/assign-stemcell.yml
+    image: platform-automation-image
+    input_mapping:
+      config: assign-stemcell-config
+      env: interpolated-files
+    params:
+      ENV_FILE: gcp-tinderbox/env/env.yml
+    task: assign-stemcell
   serial: true
+  serial_groups:
+  - download-upload-stage-product
+- name: generate-product-config-pas
   plan:
-    - in_parallel:
-        - get: product-config-opsman
+  - in_parallel:
+      steps:
+        - get: product-config-pas
+          passed:
+            - download-upload-stage-product-pas
+          trigger: true
         - get: platform-automation-image
-          params: {unpack: true}
+          params:
+            unpack: true
         - get: platform-automation-tasks
-          params: {unpack: true}
+          params:
+            unpack: true
         - get: configuration
-    - task: credhub-interpolate
-      <<: *credhub-interpolate
-    - task: delete-opsman
-      image: platform-automation-image
-      file: platform-automation-tasks/tasks/delete-vm.yml
-      input_mapping:
-        vars: interpolated-files
-        config: configuration
-        state: configuration
-      params:
-        VARS_FILES: vars/((foundation))/vars/ops-manager-vars.yml
-        OPSMAN_CONFIG_FILE: ((foundation))/products/ops-manager.yml
-        STATE_FILE: ((foundation))/state/state.yml
-      on_success:
-        do:
-        - task: make-commit
+  - file: platform-automation-tasks/tasks/credhub-interpolate.yml
+    image: platform-automation-image
+    input_mapping:
+      files: configuration
+    params:
+      CREDHUB_CA_CERT: ((credhub_ca_cert))
+      CREDHUB_CLIENT: ((credhub_username))
+      CREDHUB_SECRET: ((credhub_password))
+      CREDHUB_SERVER: ((credhub_url))
+      INTERPOLATION_PATHS: gcp-tinderbox/config gcp-tinderbox/env gcp-tinderbox/vars
+      PREFIX: /concourse/gcp-tinderbox
+    task: credhub-interpolate
+  - file: platform-automation-tasks/tasks/staged-config.yml
+    image: platform-automation-image
+    input_mapping:
+      env: interpolated-files
+    on_success:
+      do:
+        - file: platform-automation-tasks/tasks/make-git-commit.yml
           image: platform-automation-image
-          file: platform-automation-tasks/tasks/make-git-commit.yml
           input_mapping:
+            file-source: generated-config
             repository: configuration
-            file-source: generated-state
           output_mapping:
             repository-commit: configuration-commit
           params:
-            FILE_SOURCE_PATH: state.yml
-            FILE_DESTINATION_PATH: ((foundation))/state/state.yml
-            GIT_AUTHOR_EMAIL: ((git.user.email))
-            GIT_AUTHOR_NAME: ((git.user.username))
-            COMMIT_MESSAGE: "Add or update state file: state.yml"
-        - put: configuration
-          params:
-            repository: configuration-commit
+            COMMIT_MESSAGE: 'Add or update product config: elastic-runtime.yml'
+            FILE_DESTINATION_PATH: gcp-tinderbox/generated-config/elastic-runtime.yml
+            FILE_SOURCE_PATH: cf.yml
+            GIT_AUTHOR_EMAIL: robot@company.com
+            GIT_AUTHOR_NAME: mrrobot
+          task: make-commit
+        - params:
             merge: true
+            repository: configuration-commit
+          put: configuration
+    params:
+      ENV_FILE: gcp-tinderbox/env/env.yml
+      PRODUCT_NAME: cf
+    task: staged-config
+  serial: true
+  serial_groups:
+  - generate-product-config
+#Configure Product PAS
+- name: configure-product-pas
+  plan:
+  - in_parallel:
+      steps:
+        - get: product-config-pas
+          trigger: true
+          passed:
+            - generate-product-config-pas
+        - get: platform-automation-image
+          params:
+            unpack: true
+        - get: platform-automation-tasks
+          params:
+            unpack: true
+        - get: configuration
+  - file: platform-automation-tasks/tasks/credhub-interpolate.yml
+    image: platform-automation-image
+    input_mapping:
+      files: configuration
+    params:
+      CREDHUB_CA_CERT: ((credhub_ca_cert))
+      CREDHUB_CLIENT: ((credhub_username))
+      CREDHUB_SECRET: ((credhub_password))
+      CREDHUB_SERVER: ((credhub_url))
+      INTERPOLATION_PATHS: gcp-tinderbox/config gcp-tinderbox/env gcp-tinderbox/vars
+      PREFIX: /concourse/gcp-tinderbox
+    task: credhub-interpolate
+  - file: platform-automation-tasks/tasks/configure-product.yml
+    image: platform-automation-image
+    input_mapping:
+      config: configuration
+      env: interpolated-files
+      vars: interpolated-files
+    params:
+      CONFIG_FILE: gcp-tinderbox/products/elastic-runtime.yml
+      ENV_FILE: gcp-tinderbox/env/env.yml
+      VARS_FILES: vars/gcp-tinderbox/vars/elastic-runtime-vars.yml
+    task: configure-product
+  serial: true
+  serial_groups:
+  - configure-product
+
+
+#Download Upload Stage Product PKS
+- name: download-upload-stage-product-pks
+  plan:
+  - in_parallel:
+      steps:
+        - get: product-config-opsman
+          passed: [apply-director-changes]
+          trigger: true
+        - get: product-config-pks
+          trigger: true
+        - get: product-config-pks-stemcell
+          params:
+            filename: semver-config-stemcell
+            format: yaml
+        - get: platform-automation-image
+          params:
+            unpack: true
+        - get: platform-automation-tasks
+          params:
+            unpack: true
+        - get: configuration
+  - file: platform-automation-tasks/tasks/credhub-interpolate.yml
+    image: platform-automation-image
+    input_mapping:
+      files: configuration
+    params:
+      CREDHUB_CA_CERT: ((credhub_ca_cert))
+      CREDHUB_CLIENT: ((credhub_username))
+      CREDHUB_SECRET: ((credhub_password))
+      CREDHUB_SERVER: ((credhub_url))
+      INTERPOLATION_PATHS: gcp-tinderbox/config gcp-tinderbox/env gcp-tinderbox/vars
+      PREFIX: /concourse/gcp-tinderbox
+    task: credhub-interpolate
+  - file: platform-automation-tasks/tasks/download-product.yml
+    image: platform-automation-image
+    input_mapping:
+      config: product-config-pks
+      vars: interpolated-files
+    params:
+      CONFIG_FILE: semver-config.yaml
+      VARS_FILES: vars/gcp-tinderbox/config/global.yml
+    task: download-product
+  - file: platform-automation-tasks/tasks/upload-product.yml
+    image: platform-automation-image
+    input_mapping:
+      env: interpolated-files
+      product: downloaded-product
+    params:
+      ENV_FILE: gcp-tinderbox/env/env.yml
+    task: upload-product
+  - file: platform-automation-tasks/tasks/stage-product.yml
+    image: platform-automation-image
+    input_mapping:
+      env: interpolated-files
+      product: downloaded-product
+    params:
+      ENV_FILE: gcp-tinderbox/env/env.yml
+    task: stage-product
+  - file: platform-automation-tasks/tasks/download-product.yml
+    image: platform-automation-image
+    input_mapping:
+      config: product-config-pks-stemcell
+      vars: interpolated-files
+    params:
+      CONFIG_FILE: semver-config-stemcell.yaml
+      VARS_FILES: vars/gcp-tinderbox/config/global.yml
+    task: download-stemcell
+  - file: platform-automation-tasks/tasks/upload-stemcell.yml
+    image: platform-automation-image
+    input_mapping:
+      env: interpolated-files
+      stemcell: downloaded-product
+    params:
+      ENV_FILE: gcp-tinderbox/env/env.yml
+      FLOATING_STEMCELL: false
+    task: upload-stemcell
+  - config:
+      container_limits: {}
+      inputs:
+        - name: product-config-pks-stemcell
+        - name: interpolated-files
+      outputs:
+        - name: assign-stemcell-config
+      platform: linux
+      run:
+        args:
+          - -exc
+          - |
+            stemcell_version="$( om interpolate \
+            --config product-config-pks-stemcell/semver-config-stemcell.yaml \
+            --vars-file interpolated-files/gcp-tinderbox/config/global.yml \
+            --path /product-version )"
+            echo "{\"product\":\"pivotal-container-service\",\"stemcell\":\"$stemcell_version\"}" > assign-stemcell-config/config.yml
+            cat assign-stemcell-config/config.yml
+        path: sh
+    image: platform-automation-image
+    task: prepare-assign-stemcell-config
+  - file: platform-automation-tasks/tasks/assign-stemcell.yml
+    image: platform-automation-image
+    input_mapping:
+      config: assign-stemcell-config
+      env: interpolated-files
+    params:
+      ENV_FILE: gcp-tinderbox/env/env.yml
+    task: assign-stemcell
+  serial: true
+  serial_groups:
+  - download-upload-stage-product
+
+#Generate Product Config PKS
+- name: generate-product-config-pks
+  plan:
+  - in_parallel:
+      steps:
+        - get: product-config-pks
+          passed:
+            - download-upload-stage-product-pks
+          trigger: true
+        - get: platform-automation-image
+          params:
+            unpack: true
+        - get: platform-automation-tasks
+          params:
+            unpack: true
+        - get: configuration
+  - file: platform-automation-tasks/tasks/credhub-interpolate.yml
+    image: platform-automation-image
+    input_mapping:
+      files: configuration
+    params:
+      CREDHUB_CA_CERT: ((credhub_ca_cert))
+      CREDHUB_CLIENT: ((credhub_username))
+      CREDHUB_SECRET: ((credhub_password))
+      CREDHUB_SERVER: ((credhub_url))
+      INTERPOLATION_PATHS: gcp-tinderbox/config gcp-tinderbox/env gcp-tinderbox/vars
+      PREFIX: /concourse/gcp-tinderbox
+    task: credhub-interpolate
+  - file: platform-automation-tasks/tasks/staged-config.yml
+    image: platform-automation-image
+    input_mapping:
+      env: interpolated-files
+    on_success:
+      do:
+        - file: platform-automation-tasks/tasks/make-git-commit.yml
+          image: platform-automation-image
+          input_mapping:
+            file-source: generated-config
+            repository: configuration
+          output_mapping:
+            repository-commit: configuration-commit
+          params:
+            COMMIT_MESSAGE: 'Add or update product config: pivotal-container-service.yml'
+            FILE_DESTINATION_PATH: gcp-tinderbox/generated-config/pivotal-container-service.yml
+            FILE_SOURCE_PATH: pivotal-container-service.yml
+            GIT_AUTHOR_EMAIL: robot@company.com
+            GIT_AUTHOR_NAME: mrrobot
+          task: make-commit
+        - params:
+            merge: true
+            repository: configuration-commit
+          put: configuration
+    params:
+      ENV_FILE: gcp-tinderbox/env/env.yml
+      PRODUCT_NAME: pivotal-container-service
+    task: staged-config
+  serial: true
+  serial_groups:
+  - generate-product-config
+
+- name: configure-product-pks
+  plan:
+  - in_parallel:
+      steps:
+        - get: product-config-pks
+          trigger: true
+          passed:
+            - generate-product-config-pks
+        - get: platform-automation-image
+          params:
+            unpack: true
+        - get: platform-automation-tasks
+          params:
+            unpack: true
+        - get: configuration
+  - file: platform-automation-tasks/tasks/credhub-interpolate.yml
+    image: platform-automation-image
+    input_mapping:
+      files: configuration
+    params:
+      CREDHUB_CA_CERT: ((credhub_ca_cert))
+      CREDHUB_CLIENT: ((credhub_username))
+      CREDHUB_SECRET: ((credhub_password))
+      CREDHUB_SERVER: ((credhub_url))
+      INTERPOLATION_PATHS: gcp-tinderbox/config gcp-tinderbox/env gcp-tinderbox/vars
+      PREFIX: /concourse/gcp-tinderbox
+    task: credhub-interpolate
+  - file: platform-automation-tasks/tasks/configure-product.yml
+    image: platform-automation-image
+    input_mapping:
+      config: configuration
+      env: interpolated-files
+      vars: interpolated-files
+    params:
+      CONFIG_FILE: gcp-tinderbox/products/pivotal-container-service.yml
+      ENV_FILE: gcp-tinderbox/env/env.yml
+      VARS_FILES: vars/gcp-tinderbox/vars/pivotal-container-service-vars.yml
+    task: configure-product
+  serial: true
+  serial_groups:
+  - configure-product
+
+- name: apply-product-changes
+  plan:
+  - in_parallel:
+      steps:
+        - get: product-config-pas
+          trigger: true
+          passed:
+          - configure-product-pas
+        - get: product-config-pks
+          passed:
+          - configure-product-pks
+        - get: platform-automation-image
+          params:
+            unpack: true
+        - get: platform-automation-tasks
+          params:
+            unpack: true
+        - get: configuration
+  - file: platform-automation-tasks/tasks/credhub-interpolate.yml
+    image: platform-automation-image
+    input_mapping:
+      files: configuration
+    params:
+      CREDHUB_CA_CERT: ((credhub_ca_cert))
+      CREDHUB_CLIENT: ((credhub_username))
+      CREDHUB_SECRET: ((credhub_password))
+      CREDHUB_SERVER: ((credhub_url))
+      INTERPOLATION_PATHS: gcp-tinderbox/config gcp-tinderbox/env gcp-tinderbox/vars
+      PREFIX: /concourse/gcp-tinderbox
+    task: credhub-interpolate
+  - file: platform-automation-tasks/tasks/apply-changes.yml
+    image: platform-automation-image
+    input_mapping:
+      env: interpolated-files
+    params:
+      ENV_FILE: gcp-tinderbox/env/env.yml
+    task: apply-product-changes
+  serial: true
+
+- name: delete-installation
+  plan:
+  - in_parallel:
+      steps:
+        - get: platform-automation-image
+          params:
+            unpack: true
+        - get: platform-automation-tasks
+          params:
+            unpack: true
+        - get: configuration
+          trigger: true
+          passed:
+          - apply-product-changes
+  - file: platform-automation-tasks/tasks/credhub-interpolate.yml
+    image: platform-automation-image
+    input_mapping:
+      files: configuration
+    params:
+      CREDHUB_CA_CERT: ((credhub_ca_cert))
+      CREDHUB_CLIENT: ((credhub_username))
+      CREDHUB_SECRET: ((credhub_password))
+      CREDHUB_SERVER: ((credhub_url))
+      INTERPOLATION_PATHS: gcp-tinderbox/config gcp-tinderbox/env gcp-tinderbox/vars
+      PREFIX: /concourse/gcp-tinderbox
+    task: credhub-interpolate
+  - file: platform-automation-tasks/tasks/delete-installation.yml
+    image: platform-automation-image
+    input_mapping:
+      env: interpolated-files
+    params:
+      ENV_FILE: gcp-tinderbox/env/env.yml
+    task: delete-installation
+
+- name: delete-opsman
+  serial: true
+  plan:
+  - in_parallel:
+    - get: product-config-opsman
+    - get: platform-automation-image
+      params: {unpack: true}
+    - get: platform-automation-tasks
+      params: {unpack: true}
+    - get: configuration
+      passed:
+      - delete-installation
+  - task: credhub-interpolate
+    <<: *credhub-interpolate
+  - task: delete-opsman
+    image: platform-automation-image
+    file: platform-automation-tasks/tasks/delete-vm.yml
+    input_mapping:
+      vars: interpolated-files
+      config: configuration
+      state: configuration
+    params:
+      VARS_FILES: vars/((foundation))/vars/ops-manager-vars.yml
+      OPSMAN_CONFIG_FILE: ((foundation))/products/ops-manager.yml
+      STATE_FILE: ((foundation))/state/state.yml
+    on_success:
+      do:
+      - task: make-commit
+        image: platform-automation-image
+        file: platform-automation-tasks/tasks/make-git-commit.yml
+        input_mapping:
+          repository: configuration
+          file-source: generated-state
+        output_mapping:
+          repository-commit: configuration-commit
+        params:
+          FILE_SOURCE_PATH: state.yml
+          FILE_DESTINATION_PATH: ((foundation))/state/state.yml
+          GIT_AUTHOR_EMAIL: ((git.user.email))
+          GIT_AUTHOR_NAME: ((git.user.username))
+          COMMIT_MESSAGE: "Add or update state file: state.yml"
+      - put: configuration
+        params:
+          repository: configuration-commit
+          merge: true
+- name: paving-destroy
+  plan:
+  - get: configuration
+    passed:
+    - delete-opsman
+  - get: paving
+    trigger: false
+  - put: terraform
+    get_params:
+      action: destroy
+    params:
+      action: destroy
+      env_name: ((foundation))
+      terraform_source: paving/((iaas))
