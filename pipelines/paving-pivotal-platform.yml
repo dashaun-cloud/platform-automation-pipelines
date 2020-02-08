@@ -991,6 +991,7 @@ jobs:
 - name: paving-destroy
   plan:
   - get: configuration
+    trigger: true
     passed:
     - delete-opsman
   - get: paving
