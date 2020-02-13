@@ -27,6 +27,12 @@ credhub-interpolate: &credhub-interpolate
     INTERPOLATION_PATHS: ((credhub.interpolate_folders))
 
 resources:
+- name: daily-ci
+  type: time
+  source:
+    start: 1:00 AM
+    stop: 2:00 AM
+    location: America/Chicago
 - name: configuration
   type: git
   source:
@@ -159,6 +165,8 @@ resources:
 jobs:
 - name: paving-apply
   plan:
+  - get: daily-ci
+    trigger: true
   - get: paving
     trigger: false
   - put: terraform
@@ -271,7 +279,7 @@ jobs:
     - get: configuration
       trigger: false
     - get: terraform
-      trigger: false
+      trigger: true
       passed: [store-tfstate-in-credhub]
   - task: credhub-interpolate
     <<: *credhub-interpolate
@@ -341,6 +349,9 @@ jobs:
         - get: platform-automation-tasks
           params: {unpack: true}
         - get: configuration
+        - get: terraform
+          trigger: true
+          passed: [create-opsman-and-configure-auth]
     - task: credhub-interpolate
       <<: *credhub-interpolate
     - task: staged-director-config
@@ -384,6 +395,9 @@ jobs:
         params: {unpack: true}
       - get: platform-automation-tasks
         params: {unpack: true}
+      - get: terraform
+        trigger: true
+        passed: [generate-director-config]
     - task: credhub-interpolate
       <<: *credhub-interpolate
     - task: configure-director
@@ -411,6 +425,9 @@ jobs:
         - get: platform-automation-tasks
           params: {unpack: true}
         - get: configuration
+        - get: terraform
+          trigger: true
+          passed: [configure-director]
     - task: credhub-interpolate
       <<: *credhub-interpolate
     - task: apply-director-changes
@@ -426,9 +443,9 @@ jobs:
   serial: true
   plan:
   - in_parallel:
-      - get: product-config-opsman
-        passed: [apply-director-changes]
+      - get: terraform
         trigger: true
+        passed: [apply-director-changes]
       - get: platform-automation-image
         params: {unpack: true}
       - get: platform-automation-tasks
@@ -453,9 +470,9 @@ jobs:
   plan:
   - in_parallel:
       steps:
-        - get: product-config-opsman
-          passed: [apply-director-changes]
+        - get: terraform
           trigger: true
+          passed: [apply-director-changes]
         - get: product-config-pas
           trigger: true
         - get: product-config-pas-stemcell
@@ -560,6 +577,10 @@ jobs:
   plan:
   - in_parallel:
       steps:
+        - get: terraform
+          trigger: true
+          passed:
+            - download-upload-stage-product-pas
         - get: product-config-pas
           passed:
             - download-upload-stage-product-pas
@@ -619,6 +640,10 @@ jobs:
   plan:
   - in_parallel:
       steps:
+        - get: terraform
+          trigger: true
+          passed:
+            - generate-product-config-pas
         - get: product-config-pas
           trigger: true
           passed:
@@ -663,9 +688,9 @@ jobs:
   plan:
   - in_parallel:
       steps:
-        - get: product-config-opsman
-          passed: [apply-director-changes]
+        - get: terraform
           trigger: true
+          passed: [apply-director-changes]
         - get: product-config-pks
           trigger: true
         - get: product-config-pks-stemcell
@@ -772,6 +797,10 @@ jobs:
   plan:
   - in_parallel:
       steps:
+        - get: terraform
+          trigger: true
+          passed:
+            - download-upload-stage-product-pks
         - get: product-config-pks
           passed:
             - download-upload-stage-product-pks
@@ -831,10 +860,11 @@ jobs:
   plan:
   - in_parallel:
       steps:
-        - get: product-config-pks
+        - get: terraform
           trigger: true
           passed:
             - generate-product-config-pks
+        - get: product-config-pks
         - get: platform-automation-image
           params:
             unpack: true
@@ -873,13 +903,11 @@ jobs:
   plan:
   - in_parallel:
       steps:
-        - get: product-config-pas
+        - get: terraform
           trigger: true
           passed:
-          - configure-product-pas
-        - get: product-config-pks
-          passed:
-          - configure-product-pks
+            - configure-product-pas
+            - configure-product-pks
         - get: platform-automation-image
           params:
             unpack: true
@@ -918,10 +946,11 @@ jobs:
         - get: platform-automation-tasks
           params:
             unpack: true
-        - get: configuration
+        - get: terraform
           trigger: true
           passed:
           - apply-product-changes
+        - get: configuration
   - file: platform-automation-tasks/tasks/credhub-interpolate.yml
     image: platform-automation-image
     input_mapping:
@@ -951,10 +980,11 @@ jobs:
       params: {unpack: true}
     - get: platform-automation-tasks
       params: {unpack: true}
-    - get: configuration
+    - get: terraform
       trigger: true
       passed:
       - delete-installation
+    - get: configuration
   - task: credhub-interpolate
     <<: *credhub-interpolate
   - task: delete-opsman
@@ -990,10 +1020,11 @@ jobs:
           merge: true
 - name: paving-destroy
   plan:
-  - get: configuration
+  - get: terraform
     trigger: true
     passed:
     - delete-opsman
+  - get: configuration
   - get: paving
     trigger: false
   - put: terraform
