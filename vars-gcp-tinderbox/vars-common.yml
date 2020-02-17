@@ -7,6 +7,7 @@ s3:
   buckets:
     platform_automation: ((project))-platform-automation    # map bucket for platform-automation artifacts (e.g. image)
     foundation: ((project))-platform-backups                # map bucket for current foundation for hosting exported installation-*.zip files
+    products: ((project))-pivnet-storage-gcp
 
 credhub:
   server: ((credhub_url))                      # CredHub endpoint

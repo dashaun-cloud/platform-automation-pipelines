@@ -25,13 +25,3 @@
       json_key: ((s3.gcs_json_key))
       bucket: ((s3.buckets.platform_automation))
       regexp: .*image-(.*).tgz
-
-- op: replace
-  path: /resources/name=installation
-  value:
-    name: installation
-    type: gcs-resource
-    source:
-      json_key: ((s3.gcs_json_key))
-      bucket: ((s3.buckets.foundation))
-      regexp: installation-(.*).zip
