@@ -1,0 +1,69 @@
+---
+
+# This task is used in multiple jobs
+# The yaml anchor "*prepare-tasks-with-secrets" is used in its place
+prepare-tasks-with-secrets: &prepare-tasks-with-secrets
+  image: platform-automation-image
+  file: platform-automation-tasks/tasks/prepare-tasks-with-secrets.yml
+  params:
+    VARS_PATHS: vars/vars
+    CONFIG_PATHS: config/download-product
+  input_mapping:
+    tasks: platform-automation-tasks
+    config: configuration
+    vars: configuration
+  output_mapping:
+    tasks: platform-automation-tasks
+
+resource_types:
+  - name: terraform
+    type: docker-image
+    source:
+      repository: ljfranklin/terraform-resource
+      tag: latest
+  - name: pivnet
+    type: docker-image
+    source:
+      repository: pivotalcf/pivnet-resource
+      tag: latest-final
+
+resources:
+
+  - name: platform-automation-pivnet
+    type: pivnet
+    source:
+      api_token: ((pivnet_token))
+      product_slug: platform-automation
+      product_version: ^\d+\.\d+\.\d+
+      sort_by: semver
+
+  - name: platform-automation-image
+    type: s3
+    source:
+      endpoint: ((s3.endpoint))
+      region_name: ((s3.region_name))
+      access_key_id: ((s3.access_key_id))
+      secret_access_key: ((s3.secret_access_key))
+      bucket: ((s3.buckets.platform_automation))
+      regexp: .*image-(.*).tgz
+
+  - name: platform-automation-tasks
+    type: s3
+    source:
+      endpoint: ((s3.endpoint))
+      region_name: ((s3.region_name))
+      access_key_id: ((s3.access_key_id))
+      secret_access_key: ((s3.secret_access_key))
+      bucket: ((s3.buckets.platform_automation))
+      regexp: .*tasks-(.*).zip
+
+jobs:
+  - name: fetch-auto
+    plan:
+      - get: platform-automation-pivnet
+      - put: platform-automation-tasks
+        params:
+          file: platform-automation-pivnet/*tasks*.zip
+      - put: platform-automation-image
+        params:
+          file: platform-automation-pivnet/*image*.tgz
