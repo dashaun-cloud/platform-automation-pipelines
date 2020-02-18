@@ -27,14 +27,6 @@ credhub-interpolate: &credhub-interpolate
     INTERPOLATION_PATHS: ((credhub.interpolate_folders))
 
 resources:
-- name: configuration
-  type: git
-  source:
-    private_key: ((git.private_key))
-    username: ((git.user.username))
-    password: ((git.user.password))
-    uri: ((git.configuration.uri))
-    branch: master
 - name: paving
   type: git
   source:
@@ -168,7 +160,6 @@ jobs:
 
 - name: paving-destroy
   plan:
-  - get: configuration
   - get: paving
     trigger: false
   - put: terraform
