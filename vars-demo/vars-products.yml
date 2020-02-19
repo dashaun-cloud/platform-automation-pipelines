@@ -1,0 +1,10 @@
+#@data/values
+
+---
+
+products:
+- pas|elastic-runtime|cf
+- pks|pivotal-container-service
+- wavefront-nozzle|wavefront-nozzle
+- p-rabbitmq|p-rabbitmq
+- pivotal-mysql|pivotal-mysql
