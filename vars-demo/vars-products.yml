@@ -8,3 +8,4 @@ products:
 - wavefront-nozzle|wavefront-nozzle
 - p-rabbitmq|p-rabbitmq
 - pivotal-mysql|pivotal-mysql
+- p-spring-cloud-services|p-spring-cloud-services|p_spring-cloud-services
