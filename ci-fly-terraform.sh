@@ -27,7 +27,7 @@ opt_p=''    # PCF platform code
 opt_n=''    # pipeline name
 opt_o=()    # ops files seperated by comma
 
-suggested_pipeline_name="paving-pivotal-platform"
+suggested_pipeline_name="ci"
 
 while getopts "t:p:n:o:h" opt; do
     case $opt in

@@ -1,20 +1,23 @@
 ---
 
-foundation: demo                                   # current foundation code
+foundation: homelab1                                  # current foundation code
 
 s3:
-  gcs_json_key: ((gcp_credentials_json))                     # GCS: GCS' JSON key with right access permission
+  # S3 or S3 compatible (e.g. Minio, ECS, HCP)
+  endpoint: ((minio_endpoint))                           # S3: the S3 endpoint
+  access_key_id: ((minio_access_key))                 # S3: credhub: ((s3_access_key_id))
+  secret_access_key: ((minio_secret_key))         # S3: credhub: ((s3_secret_access_key))
+  region_name: ""                                     # S3: optional, regin name
   buckets:
-    platform_automation: ((project))-platform-automation    # map bucket for platform-automation artifacts (e.g. image)
-    foundation: ((project))-platform-backups                # map bucket for current foundation for hosting exported installation-*.zip files
-    products: ((project))-pivnet-storage-gcp
+    platform_automation: platform-automation      # map bucket for platform-automation artifacts (e.g. image)
+    foundation: foundation-installations          # map bucket for current foundation for hosting exported installation-*.zip files
 
 credhub:
   server: ((credhub_url))                      # CredHub endpoint
   ca_cert: ((credhub_ca_cert))                 # CA Cert from CredHub
   client: ((credhub_username))                 # UAA Client for CredHub access
   secret: ((credhub_password))                 # UAA secret for CredHub access
-  interpolate_folders: "demo/config demo/env demo/vars"  # The folders from configuration repo (see below git.configuration) to be interpolated
+  interpolate_folders: "homelab1/config homelab1/env homelab1/vars"  # The folders from configuration repo (see below git.configuration) to be interpolated
 
 git:
   configuration:                                      # The configuration repo
@@ -29,5 +32,5 @@ git:
 schedule:
   patch:                                              # Patch scheduler, the whole chunk will be used as ((schedule.patch))
     start: 12:00 AM                                   # by following Time Resource https://github.com/concourse/time-resource
-    stop: 11:00 PM
+    stop: 1:00 AM
     location: America/Chicago

@@ -971,6 +971,71 @@ jobs:
       ENV_FILE: gcp-tinderbox/env/env.yml
     task: delete-installation
 
+- name: abort-mission
+  plan:
+  - in_parallel:
+      steps:
+      - get: platform-automation-image
+        params:
+          unpack: true
+      - get: platform-automation-tasks
+        params:
+          unpack: true
+      - get: terraform
+      - get: configuration
+  - file: platform-automation-tasks/tasks/credhub-interpolate.yml
+    image: platform-automation-image
+    input_mapping:
+      files: configuration
+    params:
+      CREDHUB_CA_CERT: ((credhub_ca_cert))
+      CREDHUB_CLIENT: ((credhub_username))
+      CREDHUB_SECRET: ((credhub_password))
+      CREDHUB_SERVER: ((credhub_url))
+      INTERPOLATION_PATHS: gcp-tinderbox/config gcp-tinderbox/env gcp-tinderbox/vars
+      PREFIX: /concourse/gcp-tinderbox
+    task: credhub-interpolate
+  - file: platform-automation-tasks/tasks/delete-installation.yml
+    image: platform-automation-image
+    input_mapping:
+      env: interpolated-files
+    params:
+      ENV_FILE: gcp-tinderbox/env/env.yml
+    task: delete-installation
+  - task: credhub-interpolate
+    <<: *credhub-interpolate
+  - task: delete-opsman
+    image: platform-automation-image
+    file: platform-automation-tasks/tasks/delete-vm.yml
+    input_mapping:
+      vars: interpolated-files
+      config: configuration
+      state: configuration
+    params:
+      VARS_FILES: vars/((foundation))/vars/ops-manager-vars.yml
+      OPSMAN_CONFIG_FILE: ((foundation))/products/ops-manager.yml
+      STATE_FILE: ((foundation))/state/state.yml
+    on_success:
+      do:
+      - task: make-commit
+        image: platform-automation-image
+        file: platform-automation-tasks/tasks/make-git-commit.yml
+        input_mapping:
+          repository: configuration
+          file-source: generated-state
+        output_mapping:
+          repository-commit: configuration-commit
+        params:
+          FILE_SOURCE_PATH: state.yml
+          FILE_DESTINATION_PATH: ((foundation))/state/state.yml
+          GIT_AUTHOR_EMAIL: ((git.user.email))
+          GIT_AUTHOR_NAME: ((git.user.username))
+          COMMIT_MESSAGE: "Add or update state file: state.yml"
+      - put: configuration
+        params:
+          repository: configuration-commit
+          merge: true
+
 - name: delete-opsman
   serial: true
   plan:
