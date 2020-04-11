@@ -21,7 +21,7 @@ if ! [ -x "$(command -v ytt)" ]; then
 fi
 
 config_file="cat"
-if [[ ${#ops_files[@]} > 0 ]]; then
+if [[ ${#ops_files[@]} -gt 0 ]]; then
     if ! [ -x "$(command -v yaml-patch)" ]; then
         echo "yaml-patch tool is required for ops-files. Please get it from https://github.com/krishicks/yaml-patch/releases"
         exit 1

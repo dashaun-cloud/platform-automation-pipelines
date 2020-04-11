@@ -11,6 +11,10 @@ resource_types:
   source:
     repository: itstarting/semver-config-concourse-resource
     tag: 1.1.0
+- name: slack-notification
+  type: docker-image
+  source:
+    repository: cfcommunity/slack-notification-resource
 
 # reusable stuff
 credhub-interpolate: &credhub-interpolate
@@ -27,6 +31,10 @@ credhub-interpolate: &credhub-interpolate
     INTERPOLATION_PATHS: ((credhub.interpolate_folders))
 
 resources:
+- name: notify
+  type: slack-notification
+  source:
+    url: ((slack-webhook))
 - name: paving
   type: git
   source:
@@ -64,7 +72,23 @@ jobs:
     params:
       env_name: ((foundation))
       terraform_source: paving/((iaas))
+  on_success:
+    put: notify
+    params:
+      text: "Successful paving-apply ((foundation))"
+  on_failure:
+    put: notify
+    params:
+      text: "Failed paving-apply ((foundation))"
 - name: store-tfstate-in-credhub
+  on_success:
+    put: notify
+    params:
+      text: "Successful store-tfstate-in-credhub ((foundation))"
+  on_failure:
+    put: notify
+    params:
+      text: "Failed store-tfstate-in-credhub ((foundation))"
   plan:
   - get: terraform
     trigger: true
@@ -169,3 +193,11 @@ jobs:
       action: destroy
       env_name: ((foundation))
       terraform_source: paving/((iaas))
+  on_success:
+    put: notify
+    params:
+      text: "Successful paving-destroy ((foundation))"
+  on_failure:
+    put: notify
+    params:
+      text: "Failed paving-destroy ((foundation))"

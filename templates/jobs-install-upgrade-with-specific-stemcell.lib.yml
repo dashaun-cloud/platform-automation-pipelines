@@ -170,6 +170,14 @@ jobs:
 
 #! 4. apply-product-changes
 - name: apply-product-changes
+  on_success:
+    put: notify
+    params:
+      text: "Successful apply-product-changes ((foundation))"
+  on_failure:
+    put: notify
+    params:
+      text: "Failed apply-product-changes ((foundation))"
   serial: true
   plan:
   - in_parallel:
@@ -195,6 +203,14 @@ jobs:
 
 #! 5. export-installation
 - name: export-installation
+  on_success:
+    put: notify
+    params:
+      text: "Successful export-installation ((foundation))"
+  on_failure:
+    put: notify
+    params:
+      text: "Failed export-installation ((foundation))"
   serial: true
   plan:
   - in_parallel:
@@ -225,6 +241,14 @@ jobs:
 
   #! 6. delete-installation
 - name: delete-installation
+  on_success:
+    put: notify
+    params:
+      text: "Successful delete-installation ((foundation))"
+  on_failure:
+    put: notify
+    params:
+      text: "Failed delete-installation ((foundation))"
   plan:
     - in_parallel:
         - get: platform-automation-image

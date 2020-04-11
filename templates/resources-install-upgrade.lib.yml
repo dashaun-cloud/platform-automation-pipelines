@@ -45,6 +45,10 @@ resources:
     uri: ((git.configuration.uri))
     branch: master
 
+- name: notify
+  type: slack-notification
+  source:
+    url: ((slack-webhook))
 
 #! product related resourses
 

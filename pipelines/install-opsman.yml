@@ -8,8 +8,16 @@ resource_types:
   source:
     repository: itstarting/semver-config-concourse-resource
     tag: 1.1.0
+- name: slack-notification
+  type: docker-image
+  source:
+    repository: cfcommunity/slack-notification-resource
 
 resources:
+- name: notify
+  type: slack-notification
+  source:
+    url: ((slack-webhook))
 - name: platform-automation-tasks
   type: s3
   source:
@@ -80,6 +88,14 @@ credhub-interpolate: &credhub-interpolate
 jobs:
 # 1. create-opsman-and-configure-auth
 - name: create-opsman-and-configure-auth
+  on_success:
+    put: notify
+    params:
+      text: "Successful create-opsman-and-configure-auth ((foundation))"
+  on_failure:
+    put: notify
+    params:
+      text: "Failed create-opsman-and-configure-auth ((foundation))"
   serial: true
   plan:
   - in_parallel:
@@ -146,6 +162,14 @@ jobs:
 
 # 2. generate-director-config
 - name: generate-director-config
+  on_success:
+    put: notify
+    params:
+      text: "Successful generate-director-config ((foundation))"
+  on_failure:
+    put: notify
+    params:
+      text: "Failed generate-director-config ((foundation))"
   serial: true
   plan:
   - in_parallel:
@@ -189,6 +213,14 @@ jobs:
 
 # 3. configure-director
 - name: configure-director
+  on_success:
+    put: notify
+    params:
+      text: "Successful configure-director ((foundation))"
+  on_failure:
+    put: notify
+    params:
+      text: "Failed configure-director ((foundation))"
   serial: true
   plan:
   - in_parallel:
@@ -215,6 +247,14 @@ jobs:
 
 # 4. apply-director-changes
 - name: apply-director-changes
+  on_success:
+    put: notify
+    params:
+      text: "Successful apply-director-changes ((foundation))"
+  on_failure:
+    put: notify
+    params:
+      text: "Failed apply-director-changes ((foundation))"
   serial: true
   plan:
   - in_parallel:
@@ -237,6 +277,14 @@ jobs:
 
 # 5. export-installation
 - name: export-installation
+  on_success:
+    put: notify
+    params:
+      text: "Successful export-installation ((foundation))"
+  on_failure:
+    put: notify
+    params:
+      text: "Failed export-installation ((foundation))"
   serial: true
   plan:
   - in_parallel:
@@ -264,6 +312,14 @@ jobs:
 
   #! 6. delete-opsman
 - name: delete-opsman
+  on_success:
+    put: notify
+    params:
+      text: "Successful delete-opsman ((foundation))"
+  on_failure:
+    put: notify
+    params:
+      text: "Failed delete-opsman ((foundation))"
   serial: true
   plan:
     - in_parallel:

@@ -15,5 +15,9 @@ resource_types:
   source:
     repository: itstarting/semver-config-concourse-resource
     tag: 1.1.0
+- name: slack-notification
+  type: docker-image
+  source:
+    repository: cfcommunity/slack-notification-resource
 
 #@ end

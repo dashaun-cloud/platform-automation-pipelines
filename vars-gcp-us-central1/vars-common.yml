@@ -3,10 +3,15 @@
 foundation: gcp-us-central1                                   # current foundation code
 
 s3:
+  endpoint: https://your-s3-url                       # S3: the S3 endpoint
+  access_key_id: ((s3_access_key_id))                 # S3: credhub: ((s3_access_key_id))
+  secret_access_key: ((s3_secret_access_key))         # S3: credhub: ((s3_secret_access_key))
+  region_name: ""                                     # S3: optional, regin name
   gcs_json_key: ((gcp_credentials_json))                     # GCS: GCS' JSON key with right access permission
   buckets:
     platform_automation: ((project))-platform-automation    # map bucket for platform-automation artifacts (e.g. image)
-    foundation: ((project))-us-central1-backup          # map bucket for current foundation for hosting exported installation-*.zip files
+    foundation: ((project))-platform-backups                # map bucket for current foundation for hosting exported installation-*.zip files
+    products: ((project))-pivnet-storage-gcp
 
 credhub:
   server: ((credhub_url))                      # CredHub endpoint

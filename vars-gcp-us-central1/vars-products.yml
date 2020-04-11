@@ -4,4 +4,4 @@
 
 products:
 - pas|elastic-runtime|cf
-- pks|pivotal-container-service
+- wavefront-nozzle|wavefront-nozzle
